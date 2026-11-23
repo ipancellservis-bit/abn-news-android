@@ -6,6 +6,7 @@ on:
   push:
     paths:
       - '.github/workflows/main.yml'
+      - 'ABN-News-Android-cloud-build-v1.0.0.zip'
 
 jobs:
   build:
@@ -21,29 +22,41 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: |
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
       - name: Extract Android Project
         run: |
           mkdir -p android-project
           unzip -o ABN-News-Android-cloud-build-v1.0.0.zip -d android-project
 
-      - name: Find Gradle Wrapper
+      - name: Find Android Project
         run: |
-          WRAPPER=$(find android-project -name gradlew -type f | head -n 1)
-          if [ -z "$WRAPPER" ]; then
-            echo "Gradle wrapper tidak ditemukan"
+          PROJECT_FILE=$(find android-project -name settings.gradle.kts -print -quit)
+          if [ -z "$PROJECT_FILE" ]; then
+            echo "File settings.gradle.kts tidak ditemukan"
             exit 1
           fi
-          echo "PROJECT_DIR=$(dirname "$WRAPPER")" >> $GITHUB_ENV
-          chmod +x "$WRAPPER"
+          PROJECT_DIR=$(dirname "$PROJECT_FILE")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Project ditemukan: $PROJECT_DIR"
 
       - name: Build APK
         run: |
-          cd "$PROJECT_DIR"
-          ./gradlew assembleDebug --stacktrace
+          gradle --no-daemon -p "$PROJECT_DIR" assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ABN-News-Android-APK
-          path: android-project/**/build/outputs/apk/debug/*.apk
+          path: android-project/**/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
