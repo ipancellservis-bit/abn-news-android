@@ -4,6 +4,8 @@ name: ABN Android Cloud Build
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     paths:
       - '.github/workflows/main.yml'
       - 'ABN-News-Android-cloud-build-v1.0.0.zip'
@@ -22,17 +24,30 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK
         run: |
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          SDKMANAGER=$(find "$SDK_ROOT/cmdline-tools" -name sdkmanager -type f | head -n 1)
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "Android SDK Manager tidak ditemukan"
+            exit 1
+          fi
+
+          yes | "$SDKMANAGER" --licenses || true
+
+          "$SDKMANAGER" --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Install Gradle 8.9
+        run: |
+          curl -fL https://services.gradle.org/distributions/gradle-8.9-bin.zip -o gradle.zip
+          unzip -q gradle.zip
+          echo "$GITHUB_WORKSPACE/gradle-8.9/bin" >> "$GITHUB_PATH"
+          gradle --version
 
       - name: Extract Android Project
         run: |
@@ -41,22 +56,37 @@ jobs:
 
       - name: Find Android Project
         run: |
-          PROJECT_FILE=$(find android-project -name settings.gradle.kts -print -quit)
+          PROJECT_FILE=$(find android-project -type f -name settings.gradle.kts -print -quit)
+
           if [ -z "$PROJECT_FILE" ]; then
-            echo "File settings.gradle.kts tidak ditemukan"
+            echo "settings.gradle.kts tidak ditemukan"
             exit 1
           fi
+
           PROJECT_DIR=$(dirname "$PROJECT_FILE")
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
           echo "Project ditemukan: $PROJECT_DIR"
 
-      - name: Build APK
+      - name: Build ABN News APK
         run: |
           gradle --no-daemon -p "$PROJECT_DIR" assembleDebug --stacktrace
+
+      - name: Prepare APK
+        run: |
+          APK_FILE=$(find "$PROJECT_DIR/app/build/outputs/apk/debug" -type f -name "*.apk" -print -quit)
+
+          if [ -z "$APK_FILE" ]; then
+            echo "APK tidak ditemukan"
+            exit 1
+          fi
+
+          mkdir -p output
+          cp "$APK_FILE" output/ABN-News-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ABN-News-Android-APK
-          path: android-project/**/app/build/outputs/apk/debug/*.apk
+          path: output/ABN-News-debug.apk
           if-no-files-found: error
