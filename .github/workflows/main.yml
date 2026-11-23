@@ -1,0 +1,49 @@
+
+name: ABN Android Cloud Build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/main.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Extract Android Project
+        run: |
+          mkdir -p android-project
+          unzip -o ABN-News-Android-cloud-build-v1.0.0.zip -d android-project
+
+      - name: Find Gradle Wrapper
+        run: |
+          WRAPPER=$(find android-project -name gradlew -type f | head -n 1)
+          if [ -z "$WRAPPER" ]; then
+            echo "Gradle wrapper tidak ditemukan"
+            exit 1
+          fi
+          echo "PROJECT_DIR=$(dirname "$WRAPPER")" >> $GITHUB_ENV
+          chmod +x "$WRAPPER"
+
+      - name: Build APK
+        run: |
+          cd "$PROJECT_DIR"
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ABN-News-Android-APK
+          path: android-project/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
